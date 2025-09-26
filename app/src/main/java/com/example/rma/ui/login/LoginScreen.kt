@@ -12,18 +12,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import androidx.core.net.toUri
 import java.io.File
 import coil.compose.rememberAsyncImagePainter
 
 @Composable
 fun LoginScreen(
-    onLoginClick:(String,String)-> Unit,
+    onLoginClick:(String, String)-> Unit,
     onRegisterClick:()-> Unit
 ){
     var email by remember { mutableStateOf("") }
@@ -68,7 +66,7 @@ fun LoginScreen(
 
 @Composable
 fun RegisterScreen(
-    onRegisterClick:(String,String, String, String, String, Uri?)-> Unit,
+    onRegisterClick:(String, String, String, String, String, Uri?)-> Unit,
     onBackToLoginClick:()-> Unit
 ){
     var email by remember { mutableStateOf("") }
