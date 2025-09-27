@@ -1,7 +1,6 @@
-package com.example.rma
+package com.example.rma.navigation
 
 import AuthRepository
-import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,8 +34,6 @@ fun AppNavHost(navController: NavHostController, authRepository: AuthRepository)
                             navController.navigate("home") {
                                 popUpTo("login") { inclusive = true }
                             }
-                        } else {
-                            // show Snackbar / Toast
                         }
                     }
                 },
@@ -72,20 +69,29 @@ fun AppNavHost(navController: NavHostController, authRepository: AuthRepository)
 
         composable("home") {
             var profileUrl by remember { mutableStateOf<String?>(null) }
+            var fullName by remember { mutableStateOf("") }
+            var email by remember { mutableStateOf("") }
+            var phone by remember { mutableStateOf("") }
 
             // Fetch from Firestore once
             LaunchedEffect(authRepository.firebaseAuth.currentUser?.uid) {
                 val uid = authRepository.firebaseAuth.currentUser?.uid ?: return@LaunchedEffect
                 val doc = authRepository.db.collection("users").document(uid).get().await()
                 profileUrl = doc.getString("profilePictureUrl")
+                fullName = doc.getString("fullName") ?: ""
+                email = doc.getString("email") ?: ""
+                phone = doc.getString("phone") ?: ""
 
-                Log.i("PFP","PFP: ${profileUrl}")
+                Log.i("PFP","PFP: $profileUrl")
             }
 
             HomePage(
-                profilePictureUrl = profileUrl,
-                onProfileClick = { /* open profile */ },
-                onLiveClick = { /* TODO */ },
+                profileUrl = profileUrl,
+                userFullName = fullName,
+                userEmail = email,
+                userPhone = phone,
+                authRepository = authRepository,
+                navController = navController,
                 onPinClick = { /* TODO */ },
                 onFriendsClick = { /* TODO */ }
             )

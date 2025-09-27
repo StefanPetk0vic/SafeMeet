@@ -1,197 +1,85 @@
 package com.example.rma.ui.login
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import java.io.File
-import coil.compose.rememberAsyncImagePainter
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun LoginScreen(
     onLoginClick:(String, String)-> Unit,
     onRegisterClick:()-> Unit
 ){
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center
-        ) {
-        TextField(
-            value = email,
-            onValueChange = { email = it},
-            label = {Text("Email")},
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        TextField(
-            value = password,
-            onValueChange = { password = it},
-            label = {Text("Password")},
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = {onLoginClick(email,password)},
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Login")
-        }
-        TextButton(
-            onClick = onRegisterClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Register")
-        }
-    }
-}
-}
-
-@Composable
-fun RegisterScreen(
-    onRegisterClick:(String, String, String, String, String, Uri?)-> Unit,
-    onBackToLoginClick:()-> Unit
-){
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var fullName by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var photoUri by remember { mutableStateOf<Uri?>(null) }
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        photoUri = uri
-    }
-
-    val context = LocalContext.current
-    val cameraImageUri = remember {
-        val file = File(context.cacheDir, "profile_${System.currentTimeMillis()}.jpg")
-        FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            file
-        )
-    }
-
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) {
-            photoUri = cameraImageUri
-        }
-    }
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
-        Spacer(modifier = Modifier.height(24.dp))
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .align(Alignment.CenterHorizontally)
-            ) {
-                if(photoUri != null){
-                    Image(
-                        painter = rememberAsyncImagePainter(photoUri),
-                        contentDescription = "Profile photo",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-                else{
-                    Box( modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Gray),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("No Photo")
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(onClick = { galleryLauncher.launch("image/*") }) {
-                    Text("Choose Photo")
-                }
-                Button(onClick = { cameraLauncher.launch(cameraImageUri) }) {
-                    Text("Take Photo")
-                }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-
-            TextField(
-                value = fullName,
-                onValueChange = { fullName = it},
-                label = {Text("Full Name")},
+            Text(
+                "SafeMeet™",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(24.dp))
-            TextField(
-                value = username,
-                onValueChange = { username = it},
-                label = {Text("username")},
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             TextField(
                 value = email,
-                onValueChange = { email = it},
-                label = {Text("Email")},
+                onValueChange = { email = it },
+                label = { Text("Email") },
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             TextField(
                 value = password,
-                onValueChange = { password = it},
-                label = {Text("Password")},
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-
-            TextField(
-                value = phone,
-                onValueChange = { phone = it},
-                label = {Text("Phone number")},
+                onValueChange = { password = it },
+                label = { Text("Password") },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
-                onClick = {onRegisterClick(email,password, fullName, username, phone, photoUri)},
+                onClick = { onLoginClick(email, password) },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Create account")
+                Text("Login")
             }
             TextButton(
-                onClick = onBackToLoginClick,
+                onClick = onRegisterClick,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("I have an account, login")
+                Text("Register")
             }
         }
     }
 }
+

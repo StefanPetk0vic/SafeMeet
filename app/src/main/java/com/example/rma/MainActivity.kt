@@ -17,40 +17,21 @@ import com.example.rma.ui.login.RegisterScreen
 import com.example.rma.ui.theme.RMATheme
 import kotlinx.coroutines.launch
 import androidx.navigation.compose.rememberNavController
-
-
-
-//CLOUDINARY
-import android.net.Uri
-import com.bumptech.glide.Glide
-import com.cloudinary.Transformation
-import com.cloudinary.android.MediaManager
-import com.cloudinary.android.callback.ErrorInfo
-import com.cloudinary.android.callback.UploadCallback
-
-import androidx.appcompat.app.AppCompatActivity
-
-import android.util.Log
-import androidx.navigation.compose.rememberNavController
-
-import java.util.HashMap
-import java.util.Map
+import com.example.rma.navigation.AppNavHost
 
 class MainActivity : ComponentActivity() {
-
-    private val cloudName = BuildConfig.CLOUD_NAME
-    val apiKey = BuildConfig.CLOUD_API_KEY
-    val apiSecret = BuildConfig.CLOUD_API_SECRET
-
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            RMATheme{
             val navController = rememberNavController()
             AppNavHost(navController, AuthRepository())
+            }
         }
     }
+
+
 }
 
 @SuppressLint("CoroutineCreationDuringComposition")
@@ -58,19 +39,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun GreetingPreview() {
     RMATheme {
-        var authRepository = AuthRepository()
+        val authRepository = AuthRepository()
         var showLogin by rememberSaveable { mutableStateOf(authRepository.IsLoggedIn()) }
-        var coroutineScope = rememberCoroutineScope()
+        val coroutineScope = rememberCoroutineScope()
 
         if (showLogin) {
             LoginScreen(
                 onLoginClick = { email, password -> coroutineScope.launch {
-                    var success = authRepository.login(email, password)
+                    val success = authRepository.login(email, password)
                     if(success){
                         showLogin = true
-                    }
-                    else{
-                        throw error("Error while logging in")
                     }
                 }
                 },
