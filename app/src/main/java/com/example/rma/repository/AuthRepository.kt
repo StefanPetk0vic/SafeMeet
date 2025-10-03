@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -109,6 +110,21 @@ class AuthRepository{
     fun logout(){
         firebaseAuth.signOut();
     }
+
+    suspend fun updateUserLocation(lat: Double, lon: Double) {
+        val userId = firebaseAuth.currentUser?.uid ?: return
+        val updates = mapOf(
+            "lat" to lat,
+            "lon" to lon,
+            "lastUpdated" to System.currentTimeMillis()
+        )
+        db.collection("users")
+            .document(userId)
+            .update(updates)
+            .await()
+    }
+
+
     suspend fun CloudinarySavePicture(photoUri: Uri):String?{
         return suspendCoroutine { continuation ->
             MediaManager.get().upload(photoUri).callback(object : UploadCallback{

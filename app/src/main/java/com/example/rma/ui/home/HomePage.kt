@@ -1,6 +1,7 @@
 package com.example.rma.ui.login
 
 import AuthRepository
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,21 +18,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,12 +62,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
+import com.example.rma.data.models.Friend
+import com.example.rma.data.repository.MapRepository
+import com.example.rma.ui.components.PlacePinDialog
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Marker
 import com.example.rma.ui.map.UserMap
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.android.gms.maps.model.LatLng
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -70,11 +83,13 @@ fun HomePage(
     authRepository: AuthRepository,
     navController: NavHostController,
     onPinClick: () -> Unit,
-    onFriendsClick: () -> Unit
+    onFriendsClick: () -> Unit,
 ) {
     val locationPermissionState = rememberPermissionState(
         android.Manifest.permission.ACCESS_FINE_LOCATION
     )
+
+    var showFriendsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (!locationPermissionState.status.isGranted) {
@@ -84,6 +99,11 @@ fun HomePage(
 
     var showProfile by remember { mutableStateOf(false) }
     var liveMode by remember { mutableStateOf(false) }
+
+    var showPlacePinDialog by remember { mutableStateOf(false) } // controls PlacePinDialog
+    var currentUserLocation by remember { mutableStateOf<LatLng?>(null) } // tracks user location
+    val mapRepository = remember { MapRepository() } // reused repository instance
+
 
     Scaffold(
         topBar = {
@@ -101,8 +121,12 @@ fun HomePage(
                         locationPermissionState.launchPermissionRequest()
                     }
                 },
-                onPinClick = onPinClick,
-                onFriendsClick = onFriendsClick,
+                onPinClick = {
+                    if(currentUserLocation != null){
+                        showPlacePinDialog =true
+                    }
+                },
+                onFriendsClick = { showFriendsDialog = true },
                 liveMode
             )
         },
@@ -123,7 +147,7 @@ fun HomePage(
                 contentAlignment = Alignment.Center
             ) {
                 if (locationPermissionState.status.isGranted) {
-                    UserMap(liveMode = liveMode)
+                    UserMap(liveMode = liveMode,authRepository = authRepository, onLocationUpdate = { latLng -> currentUserLocation = latLng })
                 } else {
                     Text("Location permission required for LIVE mode")
                 }
@@ -144,6 +168,24 @@ fun HomePage(
             }
         )
     }
+    if (showPlacePinDialog && currentUserLocation != null) {
+        PlacePinDialog(
+            userLocation = currentUserLocation!!,
+            mapRepository = mapRepository,
+            authRepository = authRepository,
+            currentUsername = userFullName,
+            onDismiss = { showPlacePinDialog = false }
+        )
+    }
+    if (showFriendsDialog) {
+        FriendsDialog(
+            currentUserId = authRepository.firebaseAuth.currentUser?.uid ?: "",
+            onDismiss = { showFriendsDialog = false },
+            mapRepository = mapRepository,
+            authRepository = authRepository
+        )
+    }
+
 }
 
 
@@ -169,10 +211,12 @@ fun BottomNavBar(
             colors = if (liveMode) ButtonDefaults.buttonColors(containerColor = Color.Red)
             else ButtonDefaults.buttonColors()
         ) { Text("LIVE") }
-        Button(onClick = onPinClick) { Text("Placed Pins") }
+        Button(
+            onClick = onPinClick,
+            enabled = liveMode
+        ) { Text("Place Pins") }
     }
 }
-
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -284,6 +328,64 @@ fun ProfilePopup(
         }
     }
 }
+
+@Composable
+fun FriendsDialog(
+    currentUserId: String,
+    onDismiss: () -> Unit,
+    mapRepository: MapRepository,
+    authRepository: AuthRepository
+) {
+    var username by remember { mutableStateOf("") }
+    var friends by remember { mutableStateOf(listOf<Friend>()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        mapRepository.getFriends(currentUserId) { newFriends ->
+            friends = newFriends
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Friends") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Enter friend's username") }
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    if (username.isNotBlank()) {
+                        mapRepository.addFriendByUsername(currentUserId, username,
+                            onSuccess = { username = ""; error = null },
+                            onError = { e -> error = e.message })
+                    }
+                }) {
+                    Text("Add Friend")
+                }
+
+                error?.let {
+                    Text("Error: $it", color = Color.Red)
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Text("Your Friends:", style = MaterialTheme.typography.titleSmall)
+                LazyColumn {
+                    items(friends) { friend ->
+                        Text(text = friend.username)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
 
 @Composable
 fun GoLive(){
