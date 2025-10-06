@@ -84,6 +84,8 @@ class AuthRepository{
             return false
         }
     }
+
+
     suspend fun login(email:String,password:String): Boolean{
         try{
             val res = suspendCoroutine { continuation ->
@@ -111,10 +113,11 @@ class AuthRepository{
         firebaseAuth.signOut();
     }
 
-    suspend fun updateUserLocation(lat: Double, lon: Double) {
+    suspend fun updateUserLocation(lat: Double, lon: Double, isLive:Boolean) {
         val userId = firebaseAuth.currentUser?.uid ?: return
         val updates = mapOf(
             "lat" to lat,
+            "isLive" to isLive,
             "lon" to lon,
             "lastUpdated" to System.currentTimeMillis()
         )
@@ -122,6 +125,10 @@ class AuthRepository{
             .document(userId)
             .update(updates)
             .await()
+    }
+
+    fun getCurrentUserId(): String {
+        return firebaseAuth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
     }
 
 

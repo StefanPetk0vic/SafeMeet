@@ -4,6 +4,7 @@ import AuthRepository
 import android.annotation.SuppressLint
 import android.location.Location
 import android.util.Log
+import android.os.Looper
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,17 +21,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButtonDefaults.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -49,114 +50,193 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.tasks.await
-
-import androidx.compose.material.icons.outlined.StarBorder
 import com.example.rma.data.models.Friend
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.Priority
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+
 
 
 @SuppressLint("MissingPermission")
 @Composable
-fun UserMap(modifier: Modifier = Modifier,liveMode: Boolean, authRepository: AuthRepository,onLocationUpdate: (LatLng) -> Unit) {
-
+fun UserMap(
+    modifier: Modifier = Modifier,
+    liveMode: Boolean,
+    authRepository: AuthRepository,
+    onLocationUpdate: (LatLng) -> Unit
+) {
     val context = LocalContext.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    var firstFocusDone by remember { mutableStateOf(false) }
-
-    val mapRepository = remember { MapRepository() }
     var pins by remember { mutableStateOf<List<SafePin>>(emptyList()) }
-
     var selectedPin by remember { mutableStateOf<SafePin?>(null) }
 
+    var firstFocusDone by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        val firebaseAuth = FirebaseAuth.getInstance()
+    val radiusMeters = 300f
 
-        val db = Firebase.firestore
-
-        db.collection("marks")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("UserMap", "Error listening for pins: ${error.message}")
-                    return@addSnapshotListener
-                }
-                snapshot?.let {
-                    pins = it.documents.mapNotNull { doc -> doc.toObject(SafePin::class.java) }
-                }
-            }
-    }
-
+    var userLocation by remember { mutableStateOf<LatLng?>(null) }
 
     val belgrade = LatLng(44.8125, 20.4612)
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(belgrade, 15f)
     }
 
-    var userLocation by remember { mutableStateOf<LatLng?>(null) }
-    var friends by remember { mutableStateOf<List<Friend>>(emptyList()) }
+    // --- FRIENDS STATE & MAP REPOSITORY ---
+    val mapRepository = remember { MapRepository() }
+    val liveFriendsMap = remember { mutableStateMapOf<String, Friend>() } // friendId -> Friend
     val friendColors = listOf(Color.Red, Color.Green, Color.Magenta, Color.Cyan, Color.Yellow)
 
+    // --- FETCH PINS ---
     LaunchedEffect(Unit) {
-        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
-        Firebase.firestore.collection("users")
-            .document(userId)
-            .collection("friends")
-            .addSnapshotListener { snapshot, _ ->
-                if (snapshot != null) {
-                    friends = snapshot.documents.mapNotNull { it.toObject(Friend::class.java) }
-                }
+        val db = Firebase.firestore
+        db.collection("marks").addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e("UserMap", "Error listening for pins: ${error.message}")
+                return@addSnapshotListener
             }
-    }
-
-    LaunchedEffect(liveMode) {
-        if (liveMode) firstFocusDone = false
-        while(liveMode) {
-            val location: Location? = try {
-                Log.e("MAP-FUN","EVOOO MEEEE")
-                fusedLocationClient.lastLocation.await()
-            } catch (e: Exception) {
-                Log.e("MAP-FUN","ERROR: ${e}")
-                null
+            snapshot?.let {
+                pins = it.documents.mapNotNull { doc -> doc.toObject(SafePin::class.java) }
             }
-            location?.let {
-                val latLng = LatLng(it.latitude, it.longitude)
-                userLocation = latLng
-                onLocationUpdate(latLng)
-
-                try {
-                    authRepository.updateUserLocation(it.latitude, it.longitude)
-                } catch (e: Exception) {
-                    Log.e("MAP-FUN", "Failed to update Firestore: $e")
-                }
-
-                if (!firstFocusDone) {
-                    cameraPositionState.position = CameraPosition
-                        .fromLatLngZoom(latLng,cameraPositionState.position.zoom)
-                    firstFocusDone = true
-                }
-            }
-            delay(5000L)
         }
     }
+
+    // --- FETCH FRIENDS ONCE ---
+    LaunchedEffect(Unit) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
+        val db = Firebase.firestore
+
+        // Coroutine for periodic updates every 5 seconds
+        launch {
+            while (true) {
+                db.collection("users")
+                    .document(currentUserId)
+                    .collection("follows")
+                    .get()
+                    .addOnSuccessListener { followsSnapshot ->
+                        followsSnapshot.documents.forEach { followDoc ->
+                            val friendId = followDoc.id
+                            db.collection("users")
+                                .document(friendId)
+                                .get()
+                                .addOnSuccessListener { friendDoc ->
+                                    val friend = friendDoc.toObject(Friend::class.java)
+                                    if (friend != null && friend.lat != null && friend.lon != null) {
+                                        liveFriendsMap[friend.friendId] = friend
+                                    }
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("MAP", "Failed to fetch friend $friendId: $e")
+                                }
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("MAP", "Failed to fetch follows: $e")
+                    }
+
+                delay(5000L) // Wait 5 seconds before next update
+            }
+        }
+    }
+
+
+    // --- USER LOCATION UPDATES ---
+    val currentLiveMode by rememberUpdatedState(liveMode)
+
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                if (!currentLiveMode) return
+                result.lastLocation?.let { location ->
+                    val latLng = LatLng(location.latitude, location.longitude)
+                    userLocation = latLng
+                    onLocationUpdate(latLng)
+
+                    if (!firstFocusDone) {
+                        cameraPositionState.position =
+                            CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                        firstFocusDone = true
+                    }
+
+                    CoroutineScope(Dispatchers.IO).launch {
+                        authRepository.updateUserLocation(
+                            location.latitude,
+                            location.longitude,
+                            currentLiveMode
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+
+    LaunchedEffect(liveMode) {
+        if (liveMode) {
+            firstFocusDone = false
+            Log.e("GOD BLESS","${liveMode} ==TRUE")
+            val locationRequest = LocationRequest.create().apply {
+                interval = 5000L
+                fastestInterval = 2000L
+                priority = Priority.PRIORITY_HIGH_ACCURACY
+            }
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+        } else {
+
+            Log.e("GOD BLESS","${liveMode} == FALSE")
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+            userLocation?.let { lastLoc ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    authRepository.updateUserLocation(lastLoc.latitude, lastLoc.longitude, false)
+                }
+            }
+        }
+    }
+
+    // --- GOOGLE MAP ---
     GoogleMap(
         modifier = modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState
     ) {
-        if (liveMode && userLocation != null) {
-            MapCircle(center = userLocation!!, strokeColor = Color.Blue, fillColor = Color(0x550000FF))
-        }
-        friends.forEachIndexed { index, friend ->
-            val color = friendColors[index % friendColors.size] // cycle through colors
-            if (friend.lat != null && friend.lon != null) {
+        // Draw my own location
+        userLocation?.let { myLoc ->
+            if (liveMode) {
                 MapCircle(
-                    center = LatLng(friend.lat, friend.lon),
-                    strokeColor = color,
-                    fillColor = color.copy(alpha = 0.3f)
+                    center = myLoc,
+                    strokeColor = Color.Blue,
+                    fillColor = Color(0x550000FF) // semi-transparent blue
                 )
             }
         }
 
+        // Draw friends WITHIN 300 M RADIUS !!!!!!!!
+        userLocation?.let { myLoc ->
+            liveFriendsMap.values.forEachIndexed { index, friend ->
+                if (friend.lat != null && friend.lon != null) {
+                    val results = FloatArray(1)
+                    Location.distanceBetween(
+                        myLoc.latitude, myLoc.longitude,
+                        friend.lat, friend.lon,
+                        results
+                    )
+                    val distance = results[0]
+                    if (distance <= radiusMeters) {
+                        val color = friendColors[index % friendColors.size]
+                        MapCircle(
+                            center = LatLng(friend.lat, friend.lon),
+                            strokeColor = color,
+                            fillColor = color.copy(alpha = 0.3f)
+                        )
+                    }
+                }
+            }
+        }
 
+        // Draw pins
         pins.forEach { pin ->
             Marker(
                 state = MarkerState(position = LatLng(pin.lat, pin.lon)),
@@ -168,6 +248,8 @@ fun UserMap(modifier: Modifier = Modifier,liveMode: Boolean, authRepository: Aut
             )
         }
     }
+
+    // --- PIN DIALOG ---
     selectedPin?.let { pin ->
         Dialog(onDismissRequest = { selectedPin = null }) {
             Card(modifier = Modifier.fillMaxWidth(0.9f)) {
@@ -184,11 +266,8 @@ fun UserMap(modifier: Modifier = Modifier,liveMode: Boolean, authRepository: Aut
                         onError = { error ->
                             Log.e("UserMap", "Failed to load image: ${error.result.throwable}")
                         },
-                        onSuccess = { success ->
-                            Log.d("UserMap", "Image loaded successfully")
-                        }
+                        onSuccess = { Log.d("UserMap", "Image loaded successfully") }
                     )
-
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -210,7 +289,7 @@ fun UserMap(modifier: Modifier = Modifier,liveMode: Boolean, authRepository: Aut
                                                 "value" to i
                                             )
                                             db.collection("marks")
-                                                .document(pin.id)   // <-- Make sure SafePin has an "id"
+                                                .document(pin.id)
                                                 .collection("reviews")
                                                 .document(userId)
                                                 .set(ratingData)
@@ -246,7 +325,4 @@ fun UserMap(modifier: Modifier = Modifier,liveMode: Boolean, authRepository: Aut
             }
         }
     }
-
 }
-
-

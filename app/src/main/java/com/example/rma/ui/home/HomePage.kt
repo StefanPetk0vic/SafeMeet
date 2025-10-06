@@ -41,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -127,7 +128,7 @@ fun HomePage(
                     }
                 },
                 onFriendsClick = { showFriendsDialog = true },
-                liveMode
+                liveMode = liveMode
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -340,10 +341,12 @@ fun FriendsDialog(
     var friends by remember { mutableStateOf(listOf<Friend>()) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        mapRepository.getFriends(currentUserId) { newFriends ->
-            friends = newFriends
+    // Listen to friends in real-time
+    DisposableEffect(currentUserId) {
+        val registration = mapRepository.getFriendsListener(currentUserId) { newFriends ->
+            friends = newFriends // directly update state
         }
+        onDispose { registration.remove() }
     }
 
     AlertDialog(
@@ -351,6 +354,7 @@ fun FriendsDialog(
         title = { Text("Friends") },
         text = {
             Column {
+                // Add friend input
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
@@ -359,40 +363,50 @@ fun FriendsDialog(
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = {
                     if (username.isNotBlank()) {
-                        mapRepository.addFriendByUsername(currentUserId, username,
+                        mapRepository.addFriendByUsername(
+                            currentUserId,
+                            username,
                             onSuccess = { username = ""; error = null },
-                            onError = { e -> error = e.message })
+                            onError = { e -> error = e.message }
+                        )
                     }
                 }) {
                     Text("Add Friend")
                 }
 
-                error?.let {
-                    Text("Error: $it", color = Color.Red)
-                }
-
+                error?.let { Text("Error: $it", color = Color.Red) }
                 Spacer(Modifier.height(12.dp))
+
                 Text("Your Friends:", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(8.dp))
+
+                // LazyColumn for friends
                 LazyColumn {
-                    items(friends) { friend ->
-                        Text(text = friend.username)
+                    items(friends, key = { it.friendId }) { friend ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = friend.username,
+                                fontSize = 20.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = {
+                                    mapRepository.removeFriend(currentUserId, friend.friendId)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            ) {
+                                Text("Remove", color = Color.White)
+                            }
+                        }
                     }
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
     )
-}
-
-
-@Composable
-fun GoLive(){
-
-}
-
-@Composable
-fun FindFriend(){
-
 }
